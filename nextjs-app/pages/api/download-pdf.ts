@@ -26,12 +26,18 @@ export default async function handler(
     // Process LaTeX to remove solutions if needed
     let processedLatex = latex;
     if (!includeSolutions) {
-      // Remove solution sections more robustly
-      processedLatex = latex.replace(/\\subsection\*\{Solution\}[\s\S]*?(?=\\subsection\*\{Question|\\vspace|\\end\{document\})/g, '');
-      // Also try alternate solution formats
-      processedLatex = processedLatex.replace(/\\textbf\{Solution[:\.]?\}[\s\S]*?(?=\\subsection\*\{Question|\\textbf\{Question|\\vspace|\\end\{document\})/g, '');
-      // Clean up excessive vertical spaces
-      processedLatex = processedLatex.replace(/\\vspace\{[^}]*\}\s*\\vspace\{[^}]*\}/g, '\\vspace{0.5cm}');
+      // Remove solution sections - handle multiple patterns
+      // Pattern 1: \subsection*{Solution} followed by content until next question or end
+      processedLatex = processedLatex.replace(/\\subsection\*\{Solution\}[\s\S]*?(?=\\subsection\*\{Question \d+|\s*\\end\{document\})/g, '');
+      
+      // Pattern 2: \textbf{Solution} format
+      processedLatex = processedLatex.replace(/\\textbf\{Solution[:\.]?\}[\s\S]*?(?=\\subsection\*\{Question \d+|\s*\\textbf\{Question|\s*\\end\{document\})/g, '');
+      
+      // Clean up multiple consecutive \vspace commands
+      processedLatex = processedLatex.replace(/(?:\\vspace\{[^}]*\}\s*)+/g, '\\vspace{0.5cm}\n');
+      
+      // Remove trailing vspace before \end{document}
+      processedLatex = processedLatex.replace(/\\vspace\{[^}]*\}\s*\\end\{document\}/g, '\\end{document}');
     }
 
     // Create temporary directory
@@ -46,12 +52,28 @@ export default async function handler(
     const texFile = path.join(tempDir, 'questions.tex');
     fs.writeFileSync(texFile, processedLatex, 'utf-8');
 
+    // Validate LaTeX structure
+    const hasDocumentClass = processedLatex.includes('\\documentclass');
+    const hasBeginDocument = processedLatex.includes('\\begin{document}');
+    const hasEndDocument = processedLatex.includes('\\end{document}');
+    
+    if (!hasDocumentClass || !hasBeginDocument || !hasEndDocument) {
+      throw new Error('Invalid LaTeX structure: missing documentclass or document environment');
+    }
+
     try {
       // Compile LaTeX to PDF using pdflatex
-      await execPromise(
-        `pdflatex -interaction=nonstopmode -output-directory="${tempDir}" "${texFile}"`,
-        { timeout: 30000 }
-      );
+      // Note: pdflatex may return non-zero exit code for warnings, so we check if PDF exists
+      try {
+        await execPromise(
+          `pdflatex -interaction=nonstopmode -output-directory="${tempDir}" "${texFile}"`,
+          { timeout: 30000 }
+        );
+      } catch (execError: any) {
+        // pdflatex may exit with error code even if PDF is created (due to warnings)
+        // We'll check if the PDF exists below
+        console.log('pdflatex completed with warnings/errors:', execError.message);
+      }
 
       const pdfFile = path.join(tempDir, 'questions.pdf');
 
@@ -59,16 +81,24 @@ export default async function handler(
         // Check for errors in log file
         const logFile = path.join(tempDir, 'questions.log');
         let errorMsg = 'LaTeX compilation failed.';
+        let detailedError = '';
         
         if (fs.existsSync(logFile)) {
           const logContent = fs.readFileSync(logFile, 'utf-8');
-          const errorLines = logContent.split('\n').filter(line => line.startsWith('!'));
+          const errorLines = logContent.split('\n').filter(line => line.startsWith('!') || line.includes('Error'));
           if (errorLines.length > 0) {
-            errorMsg = errorLines[0];
+            errorMsg = errorLines.slice(0, 3).join(' | ');
+            detailedError = errorLines.join('\n');
           }
         }
         
-        throw new Error(errorMsg);
+        // Save the problematic LaTeX file for debugging
+        const debugFile = path.join(tmpBaseDir, 'debug-failed.tex');
+        fs.writeFileSync(debugFile, processedLatex, 'utf-8');
+        console.error('LaTeX compilation failed. Debug file saved to:', debugFile);
+        console.error('Detailed error:', detailedError);
+        
+        throw new Error(`${errorMsg}. Debug LaTeX saved to: ${debugFile}`);
       }
 
       // Read PDF file

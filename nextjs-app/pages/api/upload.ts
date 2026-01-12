@@ -178,6 +178,8 @@ CRITICAL FORMATTING REQUIREMENTS:
 - Make questions relevant to the provided content
 - STRICTLY follow the custom instructions if provided
 - Number questions consecutively starting from 1
+- DO NOT include \\includegraphics or any image references - use text descriptions only
+- DO NOT reference external files or images
 `;
 
   const result = await model.generateContent(prompt);
