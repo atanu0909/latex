@@ -6,9 +6,23 @@ import LatexPreview from '@/components/LatexPreview';
 
 interface QuestionConfig {
   subject: string;
-  numQuestions: number;
   questionTypes: string[];
   difficulty: string;
+  customInstructions?: string;
+  questionsByType?: {
+    mcq: number;
+    fillInBlanks: number;
+    trueFalse: number;
+    general: number;
+  };
+  questionsByMarks?: {
+    '2': number;
+    '3': number;
+    '4': number;
+    '5': number;
+    '6': number;
+    '10': number;
+  };
 }
 
 export default function Home() {
@@ -18,7 +32,6 @@ export default function Home() {
   const [latexContent, setLatexContent] = useState('');
   const [config, setConfig] = useState<QuestionConfig>({
     subject: 'mathematics',
-    numQuestions: 10,
     questionTypes: ['problem-solving', 'conceptual'],
     difficulty: 'mixed',
   });
@@ -75,11 +88,22 @@ export default function Home() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('subject', config.subject);
-      formData.append('numQuestions', config.numQuestions.toString());
       config.questionTypes.forEach(type => {
         formData.append('questionTypes', type);
       });
       formData.append('difficulty', config.difficulty);
+      
+      if (config.customInstructions) {
+        formData.append('customInstructions', config.customInstructions);
+      }
+      
+      if (config.questionsByType) {
+        formData.append('questionsByType', JSON.stringify(config.questionsByType));
+      }
+      
+      if (config.questionsByMarks) {
+        formData.append('questionsByMarks', JSON.stringify(config.questionsByMarks));
+      }
 
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -128,7 +152,7 @@ export default function Home() {
     }
   };
 
-  const handleDownloadPDF = async () => {
+  const handleDownloadPDF = async (includeSolutions: boolean = true) => {
     try {
       setLoading(true);
       const response = await fetch('/api/download-pdf', {
@@ -136,7 +160,7 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ latex: latexContent }),
+        body: JSON.stringify({ latex: latexContent, includeSolutions }),
       });
 
       if (!response.ok) {
@@ -241,7 +265,7 @@ export default function Home() {
               <h2 className="text-2xl font-bold text-gray-800">
                 Generated Questions
               </h2>
-              <div className="flex gap-3">
+              <div className="flex gap-3 flex-wrap">
                 <button
                   onClick={handleDownloadLatex}
                   className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold shadow hover:bg-blue-700 transition-all hover:scale-105"
@@ -249,11 +273,18 @@ export default function Home() {
                   📥 Download LaTeX
                 </button>
                 <button
-                  onClick={handleDownloadPDF}
+                  onClick={() => handleDownloadPDF(false)}
                   disabled={loading}
                   className="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold shadow hover:bg-green-700 transition-all disabled:opacity-50 hover:scale-105"
                 >
-                  {loading ? 'Compiling...' : '📄 Download PDF'}
+                  {loading ? 'Compiling...' : '📄 Questions Only PDF'}
+                </button>
+                <button
+                  onClick={() => handleDownloadPDF(true)}
+                  disabled={loading}
+                  className="bg-purple-600 text-white px-6 py-3 rounded-lg font-semibold shadow hover:bg-purple-700 transition-all disabled:opacity-50 hover:scale-105"
+                >
+                  {loading ? 'Compiling...' : '📚 PDF with Solutions'}
                 </button>
               </div>
             </div>

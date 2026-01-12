@@ -17,10 +17,21 @@ export default async function handler(
   let tempDir: string | null = null;
 
   try {
-    const { latex } = req.body;
+    const { latex, includeSolutions = true } = req.body;
 
     if (!latex) {
       return res.status(400).json({ error: 'No LaTeX content provided' });
+    }
+
+    // Process LaTeX to remove solutions if needed
+    let processedLatex = latex;
+    if (!includeSolutions) {
+      // Remove solution sections more robustly
+      processedLatex = latex.replace(/\\subsection\*\{Solution\}[\s\S]*?(?=\\subsection\*\{Question|\\vspace|\\end\{document\})/g, '');
+      // Also try alternate solution formats
+      processedLatex = processedLatex.replace(/\\textbf\{Solution[:\.]?\}[\s\S]*?(?=\\subsection\*\{Question|\\textbf\{Question|\\vspace|\\end\{document\})/g, '');
+      // Clean up excessive vertical spaces
+      processedLatex = processedLatex.replace(/\\vspace\{[^}]*\}\s*\\vspace\{[^}]*\}/g, '\\vspace{0.5cm}');
     }
 
     // Create temporary directory
@@ -33,7 +44,7 @@ export default async function handler(
 
     // Write LaTeX content to file
     const texFile = path.join(tempDir, 'questions.tex');
-    fs.writeFileSync(texFile, latex, 'utf-8');
+    fs.writeFileSync(texFile, processedLatex, 'utf-8');
 
     try {
       // Compile LaTeX to PDF using pdflatex

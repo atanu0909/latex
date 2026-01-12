@@ -4,9 +4,23 @@ import { useState } from 'react';
 
 interface QuestionConfig {
   subject: string;
-  numQuestions: number;
   questionTypes: string[];
   difficulty: string;
+  customInstructions?: string;
+  questionsByType?: {
+    mcq: number;
+    fillInBlanks: number;
+    trueFalse: number;
+    general: number;
+  };
+  questionsByMarks?: {
+    '2': number;
+    '3': number;
+    '4': number;
+    '5': number;
+    '6': number;
+    '10': number;
+  };
 }
 
 interface Props {
@@ -48,11 +62,6 @@ export default function QuestionCustomizer({ config, onConfigChange }: Props) {
     onConfigChange({ ...config, subject: e.target.value });
   };
 
-  const handleNumQuestionsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value) || 1;
-    onConfigChange({ ...config, numQuestions: Math.min(50, Math.max(1, value)) });
-  };
-
   const handleQuestionTypeToggle = (type: string) => {
     const types = config.questionTypes.includes(type)
       ? config.questionTypes.filter(t => t !== type)
@@ -65,6 +74,38 @@ export default function QuestionCustomizer({ config, onConfigChange }: Props) {
 
   const handleDifficultyChange = (difficulty: string) => {
     onConfigChange({ ...config, difficulty });
+  };
+
+  const handleCustomInstructionsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onConfigChange({ ...config, customInstructions: e.target.value });
+  };
+
+  const handleQuestionTypeCountChange = (type: keyof NonNullable<QuestionConfig['questionsByType']>, delta: number) => {
+    const current = config.questionsByType || { mcq: 0, fillInBlanks: 0, trueFalse: 0, general: 0 };
+    const newValue = Math.max(0, (current[type] || 0) + delta);
+    onConfigChange({
+      ...config,
+      questionsByType: { ...current, [type]: newValue }
+    });
+  };
+
+  const handleQuestionMarkCountChange = (marks: keyof NonNullable<QuestionConfig['questionsByMarks']>, delta: number) => {
+    const current = config.questionsByMarks || { '2': 0, '3': 0, '4': 0, '5': 0, '6': 0, '10': 0 };
+    const newValue = Math.max(0, (current[marks] || 0) + delta);
+    onConfigChange({
+      ...config,
+      questionsByMarks: { ...current, [marks]: newValue }
+    });
+  };
+
+  const getTotalQuestionsByType = () => {
+    const types = config.questionsByType || { mcq: 0, fillInBlanks: 0, trueFalse: 0, general: 0 };
+    return types.mcq + types.fillInBlanks + types.trueFalse + types.general;
+  };
+
+  const getTotalQuestionsByMarks = () => {
+    const marks = config.questionsByMarks || { '2': 0, '3': 0, '4': 0, '5': 0, '6': 0, '10': 0 };
+    return marks['2'] + marks['3'] + marks['4'] + marks['5'] + marks['6'] + marks['10'];
   };
 
   return (
@@ -99,31 +140,6 @@ export default function QuestionCustomizer({ config, onConfigChange }: Props) {
                 </option>
               ))}
             </select>
-          </div>
-
-          {/* Number of Questions */}
-          <div>
-            <label className="block text-lg font-semibold text-gray-700 mb-3">
-              🔢 Number of Questions: <span className="text-purple-600">{config.numQuestions}</span>
-            </label>
-            <div className="flex items-center gap-4">
-              <input
-                type="range"
-                min="1"
-                max="50"
-                value={config.numQuestions}
-                onChange={handleNumQuestionsChange}
-                className="flex-1 h-3 bg-purple-200 rounded-lg appearance-none cursor-pointer slider"
-              />
-              <input
-                type="number"
-                min="1"
-                max="50"
-                value={config.numQuestions}
-                onChange={handleNumQuestionsChange}
-                className="w-20 px-3 py-2 border-2 border-purple-200 rounded-lg focus:outline-none focus:border-purple-500 text-center"
-              />
-            </div>
           </div>
 
           {/* Question Types */}
@@ -170,13 +186,106 @@ export default function QuestionCustomizer({ config, onConfigChange }: Props) {
             </div>
           </div>
 
+          {/* Custom Instructions */}
+          <div>
+            <label className="block text-lg font-semibold text-gray-700 mb-3">
+              💡 Custom Instructions (Optional) ⭐
+            </label>
+            <textarea
+              value={config.customInstructions || ''}
+              onChange={handleCustomInstructionsChange}
+              placeholder="Examples: • Focus on Chapter 3: Photosynthesis only • Include more questions on chemical equations • Make difficulty level: moderate to hard • Focus on topics: cell structure, DNA replication • Include real-world application questions"
+              className="w-full px-4 py-3 border-2 border-purple-200 rounded-lg focus:outline-none focus:border-purple-500 transition-colors text-sm min-h-[100px] resize-y"
+              rows={4}
+            />
+            <p className="mt-2 text-sm text-yellow-700 flex items-start gap-2">
+              <span>💡</span>
+              <span><strong>Smart Tips:</strong> Be specific about chapters, topics, difficulty level, or question style. These instructions take highest priority during generation.</span>
+            </p>
+          </div>
+
+          {/* 1 Mark Questions */}
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-xl border-2 border-blue-200">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">
+              1 Mark Questions <span className="text-blue-600">(Total: {getTotalQuestionsByType()})</span>
+            </h3>
+            <div className="space-y-3">
+              {[
+                { key: 'mcq' as const, label: 'Multiple Choice (MCQ)' },
+                { key: 'fillInBlanks' as const, label: 'Fill in the Blanks' },
+                { key: 'trueFalse' as const, label: 'True or False' },
+                { key: 'general' as const, label: 'General Questions' }
+              ].map(item => (
+                <div key={item.key} className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm">
+                  <span className="font-medium text-gray-700">{item.label}</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleQuestionTypeCountChange(item.key, -1)}
+                      className="w-10 h-10 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold text-gray-700 transition-colors"
+                    >
+                      -
+                    </button>
+                    <span className="w-12 text-center font-bold text-lg text-gray-800">
+                      {config.questionsByType?.[item.key] || 0}
+                    </span>
+                    <button
+                      onClick={() => handleQuestionTypeCountChange(item.key, 1)}
+                      className="w-10 h-10 bg-purple-600 hover:bg-purple-700 rounded-lg font-bold text-white transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Questions by Marks */}
+          <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-xl border-2 border-purple-200">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">
+              Questions by Marks <span className="text-purple-600">(Total: {getTotalQuestionsByMarks()})</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {[
+                { key: '2' as const, label: '2 Marks' },
+                { key: '3' as const, label: '3 Marks' },
+                { key: '4' as const, label: '4 Marks' },
+                { key: '5' as const, label: '5 Marks' },
+                { key: '6' as const, label: '6 Marks' },
+                { key: '10' as const, label: '10 Marks' }
+              ].map(item => (
+                <div key={item.key} className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm">
+                  <span className="font-medium text-gray-700">{item.label}</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleQuestionMarkCountChange(item.key, -1)}
+                      className="w-10 h-10 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold text-gray-700 transition-colors"
+                    >
+                      -
+                    </button>
+                    <span className="w-12 text-center font-bold text-lg text-gray-800">
+                      {config.questionsByMarks?.[item.key] || 0}
+                    </span>
+                    <button
+                      onClick={() => handleQuestionMarkCountChange(item.key, 1)}
+                      className="w-10 h-10 bg-purple-600 hover:bg-purple-700 rounded-lg font-bold text-white transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Configuration Summary */}
           <div className="mt-6 p-4 bg-purple-50 rounded-lg border-2 border-purple-200">
             <h3 className="font-semibold text-gray-700 mb-2">📋 Configuration Summary:</h3>
             <ul className="text-sm text-gray-600 space-y-1">
               <li>• Subject: <span className="font-medium">{SUBJECTS.find(s => s.value === config.subject)?.label}</span></li>
-              <li>• Number of Questions: <span className="font-medium">{config.numQuestions}</span></li>
-              <li>• Question Types: <span className="font-medium">{config.questionTypes.map(t => QUESTION_TYPES.find(qt => qt.value === t)?.label).join(', ')}</span></li>
+              <li>• Total 1 Mark Questions: <span className="font-medium">{getTotalQuestionsByType()}</span></li>
+              <li>• Total Questions by Marks: <span className="font-medium">{getTotalQuestionsByMarks()}</span></li>
+              <li>• Question Types: <span className="font-medium">{config.questionTypes.map(t => QUESTION_TYPES.find(qt => qt.value === t)?.label).join(', ') || 'None'}</span></li>
               <li>• Difficulty: <span className="font-medium">{DIFFICULTIES.find(d => d.value === config.difficulty)?.label}</span></li>
             </ul>
           </div>
